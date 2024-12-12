@@ -27,6 +27,10 @@ setup_host() {
   echo "\n=== Nomad Host ist gestartet. Status der Knoten: ==="
   sleep 5
   nomad node status
+
+  echo "\n=== Zugriff auf die Nomad-Web-UI ==="
+  echo "Öffnen Sie die folgende URL in Ihrem Browser:"
+  echo "http://$(hostname -I | awk '{print $1}'):4646"
 }
 
 setup_client() {

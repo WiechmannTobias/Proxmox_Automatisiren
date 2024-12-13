@@ -1,0 +1,5 @@
+consul --version
+
+# Beispiel für Consul Version 1.8.0 oder höher (ersetze durch die aktuelle Version, die du benötigst)
+VERSION="1.8.0"
+wget https://releases.hashicorp.com/consul/${VERSION}/consul_${VERSION}_linux_amd64.zip

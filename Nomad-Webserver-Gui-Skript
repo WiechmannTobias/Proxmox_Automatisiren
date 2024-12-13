@@ -1,3 +1,6 @@
+constraint = "${attr.consul.version} >= 1.8.0"
+
+
 job "hello-world-webserver" {
   datacenters = ["dc1"]
 

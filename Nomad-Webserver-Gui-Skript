@@ -1,0 +1,65 @@
+#!/bin/bash
+
+echo "Erstellen des Nomad-Webserver-Jobs..."
+
+cat <<EOF > hello-world.nomad
+job "hello-world-webserver" {
+  datacenters = ["dc1"]
+
+  group "web" {
+    count = 3
+
+    task "hello-world" {
+      driver = "docker"
+
+      config {
+        image = "python:3.9-slim"
+        args  = ["-m", "http.server", "8080"]
+        entrypoint = ["python"]
+
+        volumes = ["local/hello:/app"]
+      }
+
+      template {
+        data = <<EOF_HTML
+        <html>
+        <head>
+          <title>Hello World</title>
+        </head>
+        <body>
+          <h1 style="color: blue;">Hello Welt</h1>
+        </body>
+        </html>
+        EOF_HTML
+        destination = "local/hello/index.html"
+      }
+
+      resources {
+        cpu    = 100
+        memory = 128
+        network {
+          port "http" {
+            static = 8080
+          }
+        }
+      }
+
+      service {
+        name = "hello-world"
+        port = "http"
+
+        check {
+          type     = "http"
+          path     = "/"
+          interval = "10s"
+          timeout  = "2s"
+        }
+      }
+    }
+  }
+}
+EOF
+
+echo "Nomad-Webserver-Job wurde erstellt: hello-world.nomad"
+echo "Führe den Job mit folgendem Befehl aus:"
+echo "nomad job run hello-world.nomad"

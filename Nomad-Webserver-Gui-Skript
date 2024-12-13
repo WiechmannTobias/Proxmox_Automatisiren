@@ -1,13 +1,8 @@
-constraint = "${attr.consul.version} >= 1.8.0"
-
-
 job "hello-world-webserver" {
   datacenters = ["dc1"]
 
   group "web" {
     count = 3
-
-    constraint = "${attr.consul.version} >= 1.8.0"
 
     task "hello-world" {
       driver = "docker"
@@ -58,71 +53,30 @@ EOF
         }
       }
     }
-  }
-}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-job "hello-world-webserver" {
-  datacenters = ["dc1"]
-
-  group "web" {
-    count = 3
-
-    task "hello-world" {
+    task "load-balancer" {
       driver = "docker"
 
       config {
-        image = "python:3.9-slim"
-        args  = ["-m", "http.server", "8080"]
-        entrypoint = ["python"]
-
-        volumes = [
-          "local/hello:/app"
-        ]
-      }
-
-      template {
-        data = <<EOF
-<html>
-  <head>
-    <title>Hello World</title>
-  </head>
-  <body>
-    <h1 style="color: blue;">Hello Welt</h1>
-  </body>
-</html>
-EOF
-        destination = "local/hello/index.html"
+        image = "nginx:latest"
+        port_map = {
+          http = 80
+        }
       }
 
       resources {
-        cpu    = 100 # in MHz
-        memory = 128 # in MB
+        cpu    = 50
+        memory = 64
         network {
           port "http" {
-            static = 8080
+            static = 80
           }
         }
       }
 
       service {
-        name = "hello-world"
+        name = "nginx-lb"
         port = "http"
-
-        tags = ["web", "load-balancer"]
 
         check {
           type     = "http"
@@ -130,6 +84,21 @@ EOF
           interval = "10s"
           timeout  = "2s"
         }
+      }
+
+      template {
+        data = <<EOF
+server {
+    listen 80;
+    location / {
+        proxy_pass http://hello-world:8080;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+}
+EOF
+        destination = "local/nginx.conf"
       }
     }
   }

@@ -1,4 +1,4 @@
-job "hello-world-with-proxy-and-loadbalancer" {
+job "hello-world-webserver" {
   datacenters = ["dc1"]
 
   group "web" {
@@ -12,26 +12,28 @@ job "hello-world-with-proxy-and-loadbalancer" {
         args  = ["-m", "http.server", "8080"]
         entrypoint = ["python"]
 
-        volumes = ["local/hello:/app"]
+        volumes = [
+          "local/hello:/app"
+        ]
       }
 
       template {
         data = <<EOF
-        <html>
-        <head>
-          <title>Hello World</title>
-        </head>
-        <body>
-          <h1 style="color: blue;">Hello Welt</h1>
-        </body>
-        </html>
-        EOF
+<html>
+  <head>
+    <title>Hello World</title>
+  </head>
+  <body>
+    <h1 style="color: blue;">Hello Welt</h1>
+  </body>
+</html>
+EOF
         destination = "local/hello/index.html"
       }
 
       resources {
-        cpu    = 100
-        memory = 128
+        cpu    = 100 # in MHz
+        memory = 128 # in MB
         network {
           port "http" {
             static = 8080
@@ -43,6 +45,8 @@ job "hello-world-with-proxy-and-loadbalancer" {
         name = "hello-world"
         port = "http"
 
+        tags = ["web", "load-balancer"]
+
         check {
           type     = "http"
           path     = "/"
@@ -51,55 +55,5 @@ job "hello-world-with-proxy-and-loadbalancer" {
         }
       }
     }
-  }
-
-  group "proxy" {
-    count = 1
-
-    task "traefik" {
-      driver = "docker"
-
-      config {
-        image = "traefik:v2.10"
-        args = [
-          "--providers.consulCatalog=true",
-          "--entrypoints.web.address=:80",
-          "--log.level=DEBUG"
-        ]
-
-        port_map {
-          web = 80
-        }
-      }
-
-      resources {
-        cpu    = 200
-        memory = 128
-        network {
-          port "web" {
-            static = 80
-          }
-        }
-      }
-
-      service {
-        name = "traefik"
-        port = "web"
-        connect {
-          sidecar_service {}
-        }
-      }
-
-      env {
-        CONSUL_HTTP_ADDR = "192.168.240.1:8500"
-      }
-    }
-  }
-
-  reschedule {
-    attempts        = 0    # Unbegrenzt neu starten
-    delay           = "30s"
-    interval        = "5m"
-    delay_function  = "exponential"
   }
 }

@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# Definiere die erforderliche CNI-Plugin-Version
+REQUIRED_CNI_VERSION="v0.4.0"
+CNI_BIN_DIR="/opt/cni/bin"
+CNI_CONF_DIR="/etc/cni/net.d"
+BRIDGE_PLUGIN="$CNI_BIN_DIR/bridge"
+CNI_URL="https://github.com/containernetworking/cni/releases/download/$REQUIRED_CNI_VERSION/cni-plugins-linux-amd64-$REQUIRED_CNI_VERSION.tgz"
+
+# Überprüfen, ob das CNI-Plugin bereits installiert ist
+check_cni_installed() {
+    if [ ! -f "$BRIDGE_PLUGIN" ]; then
+        echo "CNI-Plugin 'bridge' ist nicht installiert. Installation wird durchgeführt..."
+        install_cni_plugin
+    else
+        echo "CNI-Plugin 'bridge' ist bereits installiert."
+        check_cni_version
+    fi
+}
+
+# Installiere das CNI-Plugin
+install_cni_plugin() {
+    echo "Herunterladen und Installieren des CNI-Plugins..."
+    curl -Lo /tmp/cni-plugins.tgz "$CNI_URL"
+    tar -C "$CNI_BIN_DIR" -xvzf /tmp/cni-plugins.tgz
+    rm /tmp/cni-plugins.tgz
+
+    # Optional: Konfiguration des CNI-Plugins (z.B. bridge)
+    configure_cni
+}
+
+# Überprüfen der Version des CNI-Plugins
+check_cni_version() {
+    local cni_version
+    cni_version=$("$BRIDGE_PLUGIN" --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+')
+
+    if [ "$cni_version" != "$REQUIRED_CNI_VERSION" ]; then
+        echo "CNI-Plugin-Version $cni_version gefunden. Erforderlich ist $REQUIRED_CNI_VERSION. Aktualisierung wird durchgeführt..."
+        install_cni_plugin
+    else
+        echo "CNI-Plugin-Version $cni_version entspricht der erforderlichen Version $REQUIRED_CNI_VERSION."
+    fi
+}
+
+# CNI-Netzwerkkonfiguration anpassen (z.B. bridge konfigurieren)
+configure_cni() {
+    echo "Konfiguriere CNI-Plugin 'bridge'..."
+
+    # Sicherstellen, dass das Verzeichnis für CNI-Konfigurationen existiert
+    mkdir -p "$CNI_CONF_DIR"
+
+    # Bridge-Konfigurationsdatei erstellen
+    cat > "$CNI_CONF_DIR/10-bridge.conf" <<EOF
+{
+  "cniVersion": "0.4.0",
+  "name": "bridge",
+  "type": "bridge",
+  "bridge": "br0",
+  "isGateway": true,
+  "ipMasq": true,
+  "ipam": {
+    "type": "host-local",
+    "subnet": "10.0.0.0/24",
+    "rangeStart": "10.0.0.10",
+    "rangeEnd": "10.0.0.50",
+    "gateway": "10.0.0.1"
+  }
+}
+EOF
+    echo "CNI-Konfiguration abgeschlossen."
+}
+
+# Setze das Nomad-Node-Attribut, falls es nicht gesetzt ist
+set_node_attribute() {
+    local node_id
+    node_id=$(nomad node status | grep -E "id" | awk '{print $1}')
+
+    if [ -z "$node_id" ]; then
+        echo "Fehler: Keine Nomad-Knoten gefunden."
+        exit 1
+    fi
+
+    # Überprüfen, ob das Attribut bereits gesetzt ist
+    local current_attr
+    current_attr=$(nomad node inspect "$node_id" | grep -oP '"plugins\.cni\.version\.bridge":\s*"\K[^"]+')
+
+    if [ "$current_attr" != "$REQUIRED_CNI_VERSION" ]; then
+        echo "Setze das Attribut für die CNI-Version auf $REQUIRED_CNI_VERSION..."
+        nomad node meta -node="$node_id" "plugins.cni.version.bridge=$REQUIRED_CNI_VERSION"
+    else
+        echo "Attribut 'plugins.cni.version.bridge' ist bereits korrekt auf $REQUIRED_CNI_VERSION gesetzt."
+    fi
+}
+
+# Starte den Nomad-Agent neu, um sicherzustellen, dass Änderungen wirksam werden
+restart_nomad_agent() {
+    echo "Starte den Nomad-Agenten auf dem Knoten neu..."
+    systemctl restart nomad
+}
+
+# Überprüfe die Knoten und führe die Anpassungen durch
+main() {
+    echo "Überprüfe die CNI-Plugin-Installation und -Konfiguration..."
+
+    check_cni_installed
+    set_node_attribute
+    restart_nomad_agent
+
+    echo "Fertig! Alle Anpassungen wurden vorgenommen."
+}
+
+# Skript ausführen
+main

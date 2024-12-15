@@ -1,0 +1,94 @@
+#!/bin/bash
+
+set -e  # Beendet das Skript bei Fehlern
+set -o pipefail  # Beendet bei Fehlern in einer Pipe
+
+# Variablen
+CNI_BIN_DIR="/opt/cni/bin"
+CNI_CONF_DIR="/etc/cni/net.d"
+NOMAD_CONFIG_DIR="/etc/nomad.d"
+CNI_PLUGINS_URL="https://github.com/containernetworking/plugins/releases/download/v1.3.0/cni-plugins-linux-amd64-v1.3.0.tgz"
+
+# 1. Installiere die CNI-Plugins
+echo "Installing CNI plugins..."
+mkdir -p "$CNI_BIN_DIR"
+curl -L -o /tmp/cni-plugins.tgz "$CNI_PLUGINS_URL"
+tar -xvf /tmp/cni-plugins.tgz -C "$CNI_BIN_DIR"
+rm /tmp/cni-plugins.tgz
+echo "CNI plugins installed in $CNI_BIN_DIR."
+
+# 2. Erstelle die CNI-Netzwerkkonfigurationsdateien
+echo "Creating CNI network configurations..."
+mkdir -p "$CNI_CONF_DIR"
+
+# Bridge-Netzwerk-Konfiguration
+cat <<EOF > "$CNI_CONF_DIR/10-bridge.conf"
+{
+  "cniVersion": "0.4.0",
+  "name": "nomad-bridge",
+  "type": "bridge",
+  "bridge": "nomad0",
+  "isGateway": true,
+  "ipMasq": true,
+  "ipam": {
+    "type": "host-local",
+    "subnet": "192.168.240.0/24",
+    "routes": [
+      { "dst": "0.0.0.0/0" }
+    ]
+  }
+}
+EOF
+
+# Loopback-Netzwerk-Konfiguration
+cat <<EOF > "$CNI_CONF_DIR/99-loopback.conf"
+{
+  "cniVersion": "0.4.0",
+  "name": "lo",
+  "type": "loopback"
+}
+EOF
+
+echo "CNI network configurations created in $CNI_CONF_DIR."
+
+# 3. Konfiguriere den Nomad-Client für CNI
+echo "Configuring Nomad client for CNI..."
+mkdir -p "$NOMAD_CONFIG_DIR"
+
+cat <<EOF > "$NOMAD_CONFIG_DIR/nomad-cni.hcl"
+plugin "cni" {
+  config {
+    bin_dir  = "$CNI_BIN_DIR"
+    conf_dir = "$CNI_CONF_DIR"
+  }
+}
+
+client {
+  network_interface = "eth0"
+
+  host_network "cni" {
+    plugin = "cni"
+  }
+}
+EOF
+
+echo "Nomad CNI configuration created in $NOMAD_CONFIG_DIR/nomad-cni.hcl."
+
+# 4. Neustarten des Nomad-Dienstes
+echo "Restarting Nomad service..."
+systemctl restart nomad
+echo "Nomad service restarted."
+
+# 5. Überprüfen der Installation
+echo "Verifying installation..."
+if nomad node status &> /dev/null; then
+  echo "Nomad client is running and CNI plugin is configured."
+else
+  echo "Nomad client setup failed. Please check logs." >&2
+  exit 1
+fi
+
+# 6. Testhinweis
+echo -e "\nSetup completed successfully!"
+echo "You can now deploy a Nomad job using CNI. Example:"
+echo "  network { mode = \"cni/nomad-bridge\" }"

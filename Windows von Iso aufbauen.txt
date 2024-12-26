@@ -1,0 +1,167 @@
+#!/bin/bash
+
+# Skript zur Installation von Terraform und Konfiguration für Proxmox VE
+
+# 1. Bereinigung vorhandener Terraform-Installation und zugehöriger Dateien
+echo "Bereinigung vorhandener Terraform-Installation und zugehöriger Dateien..."
+
+# Entfernen der Terraform-Binärdatei
+if command -v terraform &> /dev/null; then
+  echo "Terraform wird entfernt..."
+  rm -f /usr/local/bin/terraform
+fi
+
+# Entfernen von Terraform-Konfigurations- und Zustandsdateien
+echo "Löschen von Terraform-Konfigurationsdateien..."
+rm -f provider.tf credentials.auto.tfvars srv-demo-1.tf terraform.tfstate* .terraform.lock.hcl
+rm -rf .terraform/
+
+# Entfernen von temporären Terraform-Dateien
+echo "Löschen von Terraform-Log- und Cache-Dateien..."
+find ~ -name ".terraform" -type d -exec rm -rf {} + 2>/dev/null
+find /tmp -name "terraform*" -exec rm -rf {} + 2>/dev/null
+
+# Entfernen alter Terraform-Pakete, falls installiert
+if dpkg -l | grep -i terraform &> /dev/null; then
+  echo "Vorherige Terraform-Pakete werden deinstalliert..."
+  apt purge -y terraform
+fi
+
+echo "Bereinigung abgeschlossen."
+
+# 2. Update des Systems
+echo "System wird aktualisiert..."
+apt update && apt upgrade -y
+
+# 3. Installation der erforderlichen Pakete
+echo "Erforderliche Pakete werden installiert..."
+apt install -y curl unzip wget
+
+# 4. Installation von Terraform
+echo "Terraform wird heruntergeladen und installiert..."
+curl -O https://releases.hashicorp.com/terraform/1.5.3/terraform_1.5.3_linux_amd64.zip
+unzip terraform_1.5.3_linux_amd64.zip
+mv terraform /usr/local/bin/
+chmod +x /usr/local/bin/terraform
+
+# 5. Erstellen der provider.tf Datei
+echo "Erstellen der provider.tf Datei..."
+
+cat <<EOL > provider.tf
+terraform {
+  required_providers {
+    proxmox = {
+      source  = "telmate/proxmox"
+      version = "2.9.11"
+    }
+  }
+}
+
+variable "proxmox_api_url" {
+  type = string
+}
+
+variable "proxmox_api_token_id" {
+  type     = string
+  sensitive = true
+}
+
+variable "proxmox_api_token_secret" {
+  type     = string
+  sensitive = true
+}
+
+provider "proxmox" {
+  pm_api_url       = var.proxmox_api_url
+  pm_api_token_id  = var.proxmox_api_token_id
+  pm_api_token_secret = var.proxmox_api_token_secret
+  pm_tls_insecure   = true
+}
+EOL
+
+# Create the credentials.auto.tfvars file with your data
+echo "Creating credentials.auto.tfvars file..."
+#Anpassen der User und der Key muss Admin rechte bekommen
+cat <<EOL > credentials.auto.tfvars
+proxmox_api_url = "https://10.8.0.5:8006/api2/json"
+proxmox_api_token_id = "root@pve!terraform2"   # Correct format for the token ID
+proxmox_api_token_secret = "c7d80d56-bc39-438c-b017-e76112b7fe6c" # Your secret token
+EOL
+
+echo "Wie viele VMs möchten Sie erstellen?"
+read vm_count
+
+# Startwerte für VM-IDs und Namen
+initial_vmid=117
+initial_name="Windows-10-VM"
+
+# VMs in einer Schleife erstellen
+for ((i=1; i<=vm_count; i++)); do
+  vmid=$((initial_vmid + i - 1)) # VM-ID hochzählen
+  vm_name="${initial_name}-${i}" # Name mit Bindestrich hochzählen
+
+  # Create the srv-demo-1.tf file for the VM configuration from an ISO file (Windows 10)
+  echo "Creating srv-demo-1.tf file..."
+  cat <<EOL > srv-demo-1.tf
+
+resource "proxmox_vm_qemu" "srv_demo_${i}" {
+  name        = "${vm_name}"
+  target_node = "JKT" # Replace with your Proxmox node name
+  iso         = "local:iso/Windows10.iso"  #anpassen
+  os_type     = "win10"
+  vmid        = ${vmid}
+  cores       = 6
+  sockets     = 1
+  cpu         = "host"
+  memory      = 8192
+  bios        = "seabios"
+  onboot      = false
+
+  disk {
+    size     = "50G"
+    type     = "scsi"
+    storage  = "Speicher"  #anpassen
+   # iothread = true
+  }
+
+  network {
+    model  = "e1000"
+    bridge = "vmbr0"
+  }
+
+  boot    = "order=scsi0"
+  scsihw  = "virtio-scsi-pci"
+}
+EOL
+done
+
+# 8. Initialisieren von Terraform
+echo "Terraform wird initialisiert..."
+terraform init
+
+# Hinweis: Führen Sie 'terraform plan' aus, um die Änderungen anzuzeigen.
+echo "Führen Sie 'terraform plan' aus, um die Änderungen anzuzeigen."
+terraform plan
+
+# Terraform anwenden
+terraform apply -auto-approve
+
+# Nach dem Terraform Apply VirtIO ISO mit Proxmox CLI hinzufügen
+echo "Füge VirtIO ISO und Windows ISO für alle VMs hinzu..."
+for ((i=1; i<=vm_count; i++)); do
+  vmid=$((initial_vmid + i - 1)) # VM-ID hochzählen
+  echo "Attaching VirtIO and Windows ISOs to VM with ID $vmid..."
+ 
+  # Attach Windows ISO to ide1 (first CD/DVD drive)
+  qm set $vmid -ide1 local:iso/Windows10.iso,media=cdrom  #anpassen 
+
+  # Attach VirtIO ISO to ide2 (second CD/DVD drive)
+  qm set $vmid -ide2 local:iso/virtio-win10.iso,media=cdrom
+done
+
+# Hinweis: Führen Sie 'terraform apply' manuell aus, um die Ressourcen zu erstellen.
+echo "Um die Ressourcen zu erstellen, führen Sie 'terraform apply' aus und bestätigen Sie mit 'yes'."
+
+echo "Skript abgeschlossen."
+
+

@@ -1,0 +1,104 @@
+#!/bin/bash
+
+# Auswahlmenü anzeigen
+echo "Was möchten Sie tun?"
+echo "1) WireGuard installieren und konfigurieren"
+echo "2) Plex in Docker installieren"
+echo "3) Unifi Controller in Docker installieren"
+echo "4) Home Assistant in Docker installieren"
+echo "5) NTFS-Laufwerk einbinden"
+echo "6) Ruhezustand und Energiesparmodi deaktivieren"
+read -p "Bitte wählen Sie eine Option (1-6): " option
+
+case $option in
+1)
+    # WireGuard Installation und Konfiguration
+    echo "Installiere und konfiguriere WireGuard..."
+    apt update && apt install -y wireguard resolvconf
+    mkdir -p /etc/wireguard
+    chmod 700 /etc/wireguard
+
+    cat <<EOF > /etc/wireguard/wg0.conf
+[Interface]
+PrivateKey = +Aim+1d7PBweQHyJEuxwd3uf5ukgLsaWWD1ecR89p2E=
+Address = 10.8.0.8/24
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = JK/Yv1/A1CitI4mminm9gedpSToSPo1UFWG158knCRY=
+PresharedKey = 5XH9yF38yJH7e0OO4LfSzn6pYmwmEmcC3ibgk/Q5MZs=
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = 85.215.35.43:51820
+EOF
+
+    chmod 600 /etc/wireguard/wg0.conf
+    wg-quick up wg0
+    systemctl enable wg-quick@wg0
+    echo "WireGuard ist eingerichtet."
+    ;;
+2)
+    # Plex in Docker installieren
+    echo "Installiere Plex Media Server in Docker..."
+    docker run -d --name plex \
+      --network=host \
+      -e PLEX_CLAIM= \
+      -e TZ=Europe/Berlin \
+      -v /path/to/config:/config \
+      -v /path/to/media:/media \
+      --restart unless-stopped \
+      plexinc/pms-docker
+    echo "Plex Media Server ist installiert."
+    ;;
+3)
+    # Unifi Controller in Docker installieren
+    echo "Installiere Unifi Controller in Docker..."
+    docker run -d --name unifi-controller \
+      --network=host \
+      -e TZ=Europe/Berlin \
+      -v /path/to/unifi:/unifi \
+      --restart unless-stopped \
+      jacobalberty/unifi
+    echo "Unifi Controller ist installiert."
+    ;;
+4)
+    # Home Assistant in Docker installieren
+    echo "Installiere Home Assistant in Docker..."
+    docker run -d --name home-assistant \
+      --network=host \
+      -e TZ=Europe/Berlin \
+      -v /path/to/config:/config \
+      --restart unless-stopped \
+      homeassistant/home-assistant:stable
+    echo "Home Assistant ist installiert."
+    ;;
+5)
+    # NTFS-Laufwerk einbinden
+    echo "Binden Sie ein NTFS-Laufwerk ein..."
+    read -p "Geben Sie den Gerätenamen ein (z. B. /dev/sdb2): " device
+    read -p "Geben Sie den Mount-Pfad ein (z. B. /mnt/plexdrive): " mountpath
+    mkdir -p $mountpath
+    apt update && apt install -y ntfs-3g
+    mount -o rw $device $mountpath
+    echo "$device $mountpath ntfs-3g rw,auto,user,fmask=0022,dmask=0000 0 0" >> /etc/fstab
+    echo "NTFS-Laufwerk ist eingebunden."
+    ;;
+6)
+    # Ruhezustand und Energiesparmodi deaktivieren
+    echo "Deaktiviere Ruhezustand und Energiesparmodi..."
+    sed -i 's/#HandleSuspendKey=.*/HandleSuspendKey=ignore/' /etc/systemd/logind.conf
+    sed -i 's/#HandleLidSwitch=.*/HandleLidSwitch=ignore/' /etc/systemd/logind.conf
+    sed -i 's/#IdleAction=.*/IdleAction=ignore/' /etc/systemd/logind.conf
+    systemctl restart systemd-logind
+
+    apt install -y tuned
+    tuned-adm profile throughput-performance
+
+    echo "GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash noidle\"" >> /etc/default/grub
+    update-grub
+
+    echo "Energiesparmodi sind deaktiviert."
+    ;;
+*)
+    echo "Ungültige Option. Bitte erneut ausführen."
+    ;;
+esac

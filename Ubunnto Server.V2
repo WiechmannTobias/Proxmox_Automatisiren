@@ -1,0 +1,199 @@
+#!/bin/bash
+
+# Festplatten-Konfiguration
+DRIVE_UUID="202CF5B12CF581D8"
+MOUNT_POINT="/mnt/plexdrive"
+
+# Farben für die Konsolenausgabe
+GREEN="\e[32m"
+RED="\e[31m"
+YELLOW="\e[33m"
+BLUE="\e[34m"
+NC="\e[0m"
+
+# Funktionen für Statusmeldungen
+print_success() {
+    echo -e "${GREEN}[OK]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[FEHLER]${NC} $1"
+}
+
+print_info() {
+    echo -e "${YELLOW}[INFO]${NC} $1"
+}
+
+# Funktion: ASCII-Banner anzeigen
+show_banner() {
+    clear
+    echo -e "${BLUE}"
+    echo "========================================="
+    echo "         🛠️ Server Setup Skript         "
+    echo "========================================="
+    echo -e "${NC}"
+}
+
+# Funktion: WireGuard einrichten
+setup_wireguard() {
+    print_info "Richte WireGuard ein..."
+    apt update && apt install -y wireguard resolvconf ufw
+
+    mkdir -p /etc/wireguard
+    chmod 700 /etc/wireguard
+
+    cat <<EOF > /etc/wireguard/wg0.conf
+[Interface]
+PrivateKey = +Aim+1d7PBweQHyJEuxwd3uf5ukgLsaWWD1ecR89p2E=
+Address = 10.8.0.8/24
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = JK/Yv1/A1CitI4mminm9gedpSToSPo1UFWG158knCRY=
+PresharedKey = 5XH9yF38yJH7e0OO4LfSzn6pYmwmEmcC3ibgk/Q5MZs=
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = 85.215.35.43:51820
+EOF
+
+    chmod 600 /etc/wireguard/wg0.conf
+    wg-quick up wg0
+    systemctl enable wg-quick@wg0
+    print_success "WireGuard wurde erfolgreich konfiguriert."
+}
+
+# Funktion: Plex Media Server einrichten
+setup_plex() {
+    print_info "Installiere Plex Media Server in einem Docker-Container..."
+    mkdir -p /docker/plex
+
+    docker run -d \
+        --name=plex \
+        --net=host \
+        -e TZ="Europe/Berlin" \
+        -e PLEX_CLAIM= \
+        -v /docker/plex:/config \
+        -v $MOUNT_POINT:/data/movies \
+        --restart unless-stopped \
+        plexinc/pms-docker
+
+    print_success "Plex Media Server läuft auf http://<Ihre-IP>:32400 (Port 32400)."
+}
+
+# Funktion: UniFi Controller einrichten
+setup_unifi() {
+    print_info "Installiere UniFi Controller in einem Docker-Container..."
+    mkdir -p /docker/unifi
+
+    docker run -d \
+        --name=unifi \
+        -p 3478:3478/udp \
+        -p 10001:10001/udp \
+        -p 8080:8080 \
+        -p 8443:8443 \
+        -p 1900:1900/udp \
+        -e TZ="Europe/Berlin" \
+        -v /docker/unifi:/config \
+        --restart unless-stopped \
+        jacobalberty/unifi:latest
+
+    print_success "UniFi Controller läuft auf https://<Ihre-IP>:8443 (Port 8443)."
+}
+
+# Funktion: Home Assistant einrichten
+setup_homeassistant() {
+    print_info "Installiere Home Assistant in einem Docker-Container..."
+    mkdir -p /docker/homeassistant
+
+    docker run -d \
+        --name=homeassistant \
+        -p 8123:8123 \
+        -e TZ="Europe/Berlin" \
+        -v /docker/homeassistant:/config \
+        --restart unless-stopped \
+        ghcr.io/home-assistant/home-assistant:stable
+
+    print_success "Home Assistant läuft auf http://<Ihre-IP>:8123 (Port 8123)."
+}
+
+# Funktion: Festplatte einrichten
+setup_drive() {
+    print_info "Richte die externe Festplatte ein..."
+    mkdir -p $MOUNT_POINT
+
+    if ! grep -q "$DRIVE_UUID" /etc/fstab; then
+        echo "UUID=$DRIVE_UUID $MOUNT_POINT ntfs defaults,auto,nofail,uid=1000,gid=1000,umask=0022 0 0" | tee -a /etc/fstab
+    fi
+
+    mount -a
+
+    if mountpoint -q $MOUNT_POINT; then
+        print_success "Festplatte erfolgreich unter $MOUNT_POINT eingebunden."
+    else
+        print_error "Fehler beim Einbinden der Festplatte!"
+        exit 1
+    fi
+}
+
+# Funktion: Ruhezustand deaktivieren
+disable_sleep() {
+    print_info "Deaktiviere Ruhezustand und Energiesparmodus..."
+    systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+    print_success "Ruhezustand wurde deaktiviert."
+}
+
+# Hauptmenü
+main_menu() {
+    show_banner
+    echo -e "${BLUE}Wählen Sie eine Option aus:${NC}"
+    echo -e "${BLUE}=========================================${NC}"
+    echo " 1) WireGuard einrichten"
+    echo " 2) Plex Media Server installieren (Docker)"
+    echo " 3) UniFi Controller installieren (Docker)"
+    echo " 4) Home Assistant installieren (Docker)"
+    echo " 5) Externe Festplatte einbinden"
+    echo " 6) Ruhezustand deaktivieren"
+    echo " 7) Alle Dienste einrichten"
+    echo " 8) Beenden"
+    echo -e "${BLUE}=========================================${NC}"
+
+    read -p "Bitte geben Sie eine Zahl ein: " choice
+    case $choice in
+        1)
+            setup_wireguard
+            ;;
+        2)
+            setup_plex
+            ;;
+        3)
+            setup_unifi
+            ;;
+        4)
+            setup_homeassistant
+            ;;
+        5)
+            setup_drive
+            ;;
+        6)
+            disable_sleep
+            ;;
+        7)
+            setup_wireguard
+            setup_drive
+            setup_plex
+            setup_unifi
+            setup_homeassistant
+            disable_sleep
+            ;;
+        8)
+            print_info "Setup beendet. Viel Spaß mit Ihrem Server!"
+            exit 0
+            ;;
+        *)
+            print_error "Ungültige Option! Bitte erneut versuchen."
+            main_menu
+            ;;
+    esac
+}
+
+# Skript starten
+main_menu

@@ -44,15 +44,15 @@ setup_wireguard() {
 
     cat <<EOF > /etc/wireguard/wg0.conf
 [Interface]
-PrivateKey = +Aim+1d7PBweQHyJEuxwd3uf5ukgLsaWWD1ecR89p2E=
-Address = 10.8.0.8/24
+PrivateKey = +Aim+1d7PcR89p2E=
+Address = 10./24
 DNS = 1.1.1.1
 
 [Peer]
-PublicKey = JK/Yv1/A1CitI4mminm9gedpSToSPo1UFWG158knCRY=
-PresharedKey = 5XH9yF38yJH7e0OO4LfSzn6pYmwmEmcC3ibgk/Q5MZs=
+PublicKey = JK=
+PresharedKey = 5XH/Q5MZs=
 AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = 85.215.35.43:51820
+Endpoint = 8:51820
 EOF
 
     chmod 600 /etc/wireguard/wg0.conf

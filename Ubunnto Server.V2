@@ -24,6 +24,11 @@ print_info() {
     echo -e "${YELLOW}[INFO]${NC} $1"
 }
 
+# Funktion: Individuelle Info-Nachricht anzeigen
+print_custom_info() {
+    echo -e "${YELLOW}[INFO]${NC} $1"
+}
+
 # Funktion: ASCII-Banner anzeigen
 show_banner() {
     clear
@@ -115,6 +120,39 @@ setup_homeassistant() {
     print_success "Home Assistant läuft auf http://<Ihre-IP>:8123 (Port 8123)."
 }
 
+# Funktion: Netdata einrichten
+setup_netdata() {
+    print_info "Installiere Netdata in einem Docker-Container..."
+    mkdir -p /docker/netdata/config /docker/netdata/lib /docker/netdata/cache
+
+    docker run -d \
+        --name=netdata \
+        -p 19999:19999 \
+        -v /docker/netdata/config:/etc/netdata \
+        -v /docker/netdata/lib:/var/lib/netdata \
+        -v /docker/netdata/cache:/var/cache/netdata \
+        --restart unless-stopped \
+        netdata/netdata
+
+    print_success "Netdata läuft auf http://<Ihre-IP>:19999 (Port 19999)."
+}
+
+# Funktion: Portainer einrichten
+setup_portainer() {
+    print_info "Installiere Portainer in einem Docker-Container..."
+    mkdir -p /docker/portainer
+
+    docker run -d \
+        --name=portainer \
+        -p 9000:9000 \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v /docker/portainer:/data \
+        --restart unless-stopped \
+        portainer/portainer-ce
+
+    print_success "Portainer läuft auf http://<Ihre-IP>:9000 (Port 9000)."
+}
+
 # Funktion: Festplatte einrichten
 setup_drive() {
     print_info "Richte die externe Festplatte ein..."
@@ -150,49 +188,98 @@ main_menu() {
     echo " 2) Plex Media Server installieren (Docker)"
     echo " 3) UniFi Controller installieren (Docker)"
     echo " 4) Home Assistant installieren (Docker)"
-    echo " 5) Externe Festplatte einbinden"
-    echo " 6) Ruhezustand deaktivieren"
-    echo " 7) Alle Dienste einrichten"
-    echo " 8) Beenden"
+    echo " 5) Netdata installieren (Docker)"
+    echo " 6) Portainer installieren (Docker)"
+    echo " 7) Externe Festplatte einbinden"
+    echo " 8) Ruhezustand deaktivieren"
+    echo " 9) Alle Dienste einrichten"
+    echo " 10) Beenden"
     echo -e "${BLUE}=========================================${NC}"
+   
+    echo -e "Bitte geben Sie eine Zahl ein."
+    echo -e "Mit dem Zusatz i gibt es eine info zu dem Punkt"
+    read choice
 
-    read -p "Bitte geben Sie eine Zahl ein: " choice
-    case $choice in
-        1)
-            setup_wireguard
-            ;;
-        2)
-            setup_plex
-            ;;
-        3)
-            setup_unifi
-            ;;
-        4)
-            setup_homeassistant
-            ;;
-        5)
-            setup_drive
-            ;;
-        6)
-            disable_sleep
-            ;;
-        7)
-            setup_wireguard
-            setup_drive
-            setup_plex
-            setup_unifi
-            setup_homeassistant
-            disable_sleep
-            ;;
-        8)
-            print_info "Setup beendet. Viel Spaß mit Ihrem Server!"
-            exit 0
-            ;;
-        *)
-            print_error "Ungültige Option! Bitte erneut versuchen."
-            main_menu
-            ;;
-    esac
+    # Überprüfen, ob 'i' für Info eingegeben wurde
+    if [[ "$choice" =~ ^[0-9]+i$ ]]; then
+        service_number="${choice%?}"  # Entferne das 'i' und erhalte nur die Zahl
+        case $service_number in
+            1)  print_custom_info "Noch in Arbeit."
+		;;
+            2)
+                print_custom_info "Noch in Arbeit."
+                ;;
+            3)
+                print_custom_info "Noch in Arbeit."
+                ;;
+            4)
+                print_custom_info "Noch in Arbeit."
+                ;;
+            5)
+                print_custom_info "Noch in Arbeit."
+                ;;
+            6)
+                print_custom_info "Noch in Arbeit."
+                ;;
+            7)
+                print_custom_info "Noch in Arbeit."
+                ;;
+            8)
+                print_custom_info "Noch in Arbeit."
+                ;;
+            *)
+                print_custom_info "Noch in Arbeit."
+                ;;
+        esac
+    else
+        case $choice in
+            1)
+                setup_wireguard
+                ;;
+            2)
+                setup_plex
+                ;;
+            3)
+                setup_unifi
+                ;;
+            4)
+                setup_homeassistant
+                ;;
+            5)
+                setup_netdata
+                ;;
+            6)
+                setup_portainer
+                ;;
+            7)
+                setup_drive
+                ;;
+            8)
+                disable_sleep
+                ;;
+            9)
+                setup_wireguard
+                setup_drive
+                setup_plex
+                setup_unifi
+                setup_homeassistant
+                setup_netdata
+                setup_portainer
+                disable_sleep
+                ;;
+            10)
+                print_info "Setup beendet. Viel Spaß mit Ihrem Server!"
+                exit 0
+                ;;
+            *)
+                print_error "Ungültige Option! Bitte erneut versuchen."
+                ;;
+        esac
+    fi
+
+    # Warten, bis der Benutzer eine beliebige Taste drückt
+    read -p "Drücken Sie Enter, um ins Menü zurückzukehren..."
+    main_menu
 }
 
 # Skript starten

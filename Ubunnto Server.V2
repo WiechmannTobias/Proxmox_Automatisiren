@@ -199,8 +199,8 @@ setup_tacticalrmm() {
 
     docker run -d \
         --name=tacticalrmm \
-        -p 80:80 \
-        -p 443:443 \
+       -p 1111:80 \
+       -p 4443:443 \
         -v /docker/tacticalrmm:/data \
         --restart unless-stopped \
         tacticalrmm/tacticalrmm:latest

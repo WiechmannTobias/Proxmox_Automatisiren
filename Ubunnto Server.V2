@@ -152,6 +152,20 @@ setup_portainer() {
 
     print_success "Portainer läuft auf http://<Ihre-IP>:9000 (Port 9000)."
 }
+# Funktion: Nextcloud einrichten
+setup_nextcloud() {
+    print_info "Installiere Nextcloud in einem Docker-Container..."
+    mkdir -p /docker/nextcloud
+
+    docker run -d \
+        --name=nextcloud \
+        -p 8080:80 \
+        -v /docker/nextcloud:/var/www/html \
+        --restart unless-stopped \
+        nextcloud
+
+    print_success "Nextcloud läuft auf http://<Ihre-IP>:8080."
+}
 
 # Funktion: Festplatte einrichten
 setup_drive() {
@@ -190,10 +204,11 @@ main_menu() {
     echo " 4) Home Assistant installieren (Docker)"
     echo " 5) Netdata installieren (Docker)"
     echo " 6) Portainer installieren (Docker)"
-    echo " 7) Externe Festplatte einbinden"
-    echo " 8) Ruhezustand deaktivieren"
-    echo " 9) Alle Dienste einrichten"
-    echo " 10) Beenden"
+    echo " 7) Nextcloud installieren (Docker)"
+    echo " 8) Externe Festplatte einbinden"
+    echo " 9) Ruhezustand deaktivieren"
+    echo " 10) Alle Dienste einrichten"
+    echo " 11) Beenden"
     echo -e "${BLUE}=========================================${NC}"
    
     echo -e "Bitte geben Sie eine Zahl ein."
@@ -227,6 +242,9 @@ main_menu() {
             8)
                 print_custom_info "Noch in Arbeit."
                 ;;
+            9)
+                print_custom_info "Noch in Arbeit."
+                ;;
             *)
                 print_custom_info "Noch in Arbeit."
                 ;;
@@ -252,12 +270,15 @@ main_menu() {
                 setup_portainer
                 ;;
             7)
-                setup_drive
+                setup_nextcloud
                 ;;
             8)
-                disable_sleep
+                setup_drive
                 ;;
             9)
+                disable_sleep
+                ;;
+            10)
                 setup_wireguard
                 setup_drive
                 setup_plex
@@ -265,9 +286,10 @@ main_menu() {
                 setup_homeassistant
                 setup_netdata
                 setup_portainer
+                setup_nextcloud
                 disable_sleep
                 ;;
-            10)
+            11)
                 print_info "Setup beendet. Viel Spaß mit Ihrem Server!"
                 exit 0
                 ;;

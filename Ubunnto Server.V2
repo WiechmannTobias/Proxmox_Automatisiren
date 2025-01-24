@@ -192,21 +192,6 @@ disable_sleep() {
     systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
     print_success "Ruhezustand wurde deaktiviert."
 }
-# Funktion: Tactical RMM einrichten
-setup_tacticalrmm() {
-    print_info "Installiere Tactical RMM in einem Docker-Container..."
-    mkdir -p /docker/tacticalrmm
-
-    docker run -d \
-        --name=tacticalrmm \
-       -p 1111:80 \
-       -p 4443:443 \
-        -v /docker/tacticalrmm:/data \
-        --restart unless-stopped \
-        tacticalrmm/tacticalrmm:latest
-
-    print_success "Tactical RMM läuft auf http://<Ihre-IP>."
-}
 
 # Hauptmenü
 main_menu() {
@@ -220,7 +205,6 @@ main_menu() {
     echo " 5) Netdata installieren (Docker)"
     echo " 6) Portainer installieren (Docker)"
     echo " 7) Nextcloud installieren (Docker)"
-    echo " 8) Tactical RMM installieren (Docker)"
     echo " 9) Externe Festplatte einbinden"
     echo " 10) Ruhezustand deaktivieren"
     echo " 11) Alle Dienste einrichten"
@@ -253,9 +237,6 @@ main_menu() {
                 print_custom_info "Noch in Arbeit."
                 ;;
             7)
-                print_custom_info "Noch in Arbeit."
-                ;;
-            8)
                 print_custom_info "Noch in Arbeit."
                 ;;
             9)
@@ -296,9 +277,6 @@ main_menu() {
                 ;;
             7)
                 setup_nextcloud
-                ;;
-            8)
-                setup_tacticalrmm
                 ;;
             9)
                 setup_drive

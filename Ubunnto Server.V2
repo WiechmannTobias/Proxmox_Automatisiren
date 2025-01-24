@@ -206,7 +206,7 @@ setup_tacticalrmm() {
         tacticalrmm/tacticalrmm:latest
 
     print_success "Tactical RMM läuft auf http://<Ihre-IP>."
-
+}
 
 # Hauptmenü
 main_menu() {

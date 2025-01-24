@@ -192,6 +192,21 @@ disable_sleep() {
     systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
     print_success "Ruhezustand wurde deaktiviert."
 }
+# Funktion: Tactical RMM einrichten
+setup_tacticalrmm() {
+    print_info "Installiere Tactical RMM in einem Docker-Container..."
+    mkdir -p /docker/tacticalrmm
+
+    docker run -d \
+        --name=tacticalrmm \
+        -p 80:80 \
+        -p 443:443 \
+        -v /docker/tacticalrmm:/data \
+        --restart unless-stopped \
+        tacticalrmm/tacticalrmm:latest
+
+    print_success "Tactical RMM läuft auf http://<Ihre-IP>."
+
 
 # Hauptmenü
 main_menu() {
@@ -205,10 +220,11 @@ main_menu() {
     echo " 5) Netdata installieren (Docker)"
     echo " 6) Portainer installieren (Docker)"
     echo " 7) Nextcloud installieren (Docker)"
-    echo " 8) Externe Festplatte einbinden"
-    echo " 9) Ruhezustand deaktivieren"
-    echo " 10) Alle Dienste einrichten"
-    echo " 11) Beenden"
+    echo " 8) Tactical RMM installieren (Docker)"
+    echo " 9) Externe Festplatte einbinden"
+    echo " 10) Ruhezustand deaktivieren"
+    echo " 11) Alle Dienste einrichten"
+    echo " 12) Beenden"
     echo -e "${BLUE}=========================================${NC}"
    
     echo -e "Bitte geben Sie eine Zahl ein."
@@ -245,6 +261,15 @@ main_menu() {
             9)
                 print_custom_info "Noch in Arbeit."
                 ;;
+ 	     10)
+                print_custom_info "Noch in Arbeit."
+                ;;
+             11)
+                print_custom_info "Noch in Arbeit."
+                ;;
+             12)
+                print_custom_info "Noch in Arbeit."
+                ;;
             *)
                 print_custom_info "Noch in Arbeit."
                 ;;
@@ -273,12 +298,15 @@ main_menu() {
                 setup_nextcloud
                 ;;
             8)
-                setup_drive
+                setup_tacticalrmm
                 ;;
             9)
-                disable_sleep
+                setup_drive
                 ;;
             10)
+                disable_sleep
+                ;;
+            11)
                 setup_wireguard
                 setup_drive
                 setup_plex
@@ -289,7 +317,8 @@ main_menu() {
                 setup_nextcloud
                 disable_sleep
                 ;;
-            11)
+            
+            12)
                 print_info "Setup beendet. Viel Spaß mit Ihrem Server!"
                 exit 0
                 ;;

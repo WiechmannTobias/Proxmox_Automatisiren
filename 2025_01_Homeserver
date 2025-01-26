@@ -171,10 +171,12 @@ setup_nextcloud() {
 # Funktion: MeshCentral einrichten
 setup_meshcentral() {
     print_info "Installiere MeshCentral in einem Docker-Container..."
+    mkdir -p /opt/meshcentral/meshcentral-data
+
+    # Docker Compose Datei erstellen
     mkdir -p ~/meshcentral
     cd ~/meshcentral
 
-    # Docker Compose Datei erstellen
     cat <<EOF > docker-compose.yml
 version: '3.7'
 
@@ -195,33 +197,29 @@ EOF
     # Docker-Container starten
     docker-compose up -d
 
+    # Warte, bis der Container vollständig gestartet ist
+    sleep 30
+
+    # Konfigurationsdatei anpassen
+    cat <<EOF > /opt/meshcentral/meshcentral-data/config.json
+{
+  "settings": {
+    "cert": "192.168.188.25",
+    "port": 443,
+    "redirPort": 80
+  },
+  "domains": {
+    "": {
+      "allowedOrigin": ["http://192.168.188.25", "https://192.168.188.25"]
+    }
+  }
+}
+EOF
+
+    # MeshCentral-Dienst neu starten
+    docker-compose restart meshcentral
+
     print_success "MeshCentral läuft auf http://192.168.188.25."
-}
-
-# Funktion: Festplatte einrichten
-setup_drive() {
-    print_info "Richte die externe Festplatte ein..."
-    mkdir -p $MOUNT_POINT
-
-    if ! grep -q "$DRIVE_UUID" /etc/fstab; then
-        echo "UUID=$DRIVE_UUID $MOUNT_POINT ntfs defaults,auto,nofail,uid=1000,gid=1000,umask=0022 0 0" | tee -a /etc/fstab
-    fi
-
-    mount -a
-
-    if mountpoint -q $MOUNT_POINT; then
-        print_success "Festplatte erfolgreich unter $MOUNT_POINT eingebunden."
-    else
-        print_error "Fehler beim Einbinden der Festplatte!"
-        exit 1
-    fi
-}
-
-# Funktion: Ruhezustand deaktivieren
-disable_sleep() {
-    print_info "Deaktiviere Ruhezustand und Energiesparmodus..."
-    systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
-    print_success "Ruhezustand wurde deaktiviert."
 }
 
 # Hauptmenü

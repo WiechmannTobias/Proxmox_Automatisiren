@@ -217,22 +217,24 @@ EOF
 
 #Pi-Hole
 setup_Pi(){
-    echo "Installiere Pi-hole in einem Docker-Container..."
-    mkdir -p /opt/stacks/pihole
-    cat <<EOF > /opt/stacks/pihole/docker-compose.yml
+echo "Installiere Pi-hole in einem Docker-Container..."
+# Verzeichnis für Pi-hole erstellen
+mkdir -p /opt/stacks/pihole
+# Docker-Compose Datei erstellen
+cat <<EOF > /opt/stacks/pihole/docker-compose.yml
 version: "3"
 services:
   pihole:
     container_name: pihole
     image: pihole/pihole:latest
     ports:
-      - "5355:53/tcp"
-      - "5355:53/udp"
-      - "8020:80/tcp"
+      - "5355:53/tcp"   # Ändert den externen DNS-Port auf 5355
+      - "5355:53/udp"   # Ändert den externen DNS-Port auf 5355
+      - "8020:80/tcp"   # Web-Oberfläche auf Port 8020 verfügbar machen
     environment:
-      TZ: 'Europe/Berlin'
-      WEBPASSWORD: 'IhrSicheresPasswort'
-      FTLCONF_LOCAL_IPV4: '192.168.x.x'
+      TZ: 'Europe/Berlin'  # Zeitzone anpassen
+      WEBPASSWORD: 'IhrSicheresPasswort'  # Passwort für die Weboberfläche festlegen
+      FTLCONF_LOCAL_IPV4: '192.168.x.x'  # Ersetzen Sie dies durch die IP-Adresse Ihres Hosts
     volumes:
       - './etc-pihole:/etc/pihole'
       - './etc-dnsmasq.d:/etc/dnsmasq.d'
@@ -240,57 +242,27 @@ services:
       - NET_ADMIN
     restart: unless-stopped
 EOF
-    echo "Pi-hole Docker-Container wurde konfiguriert."
-}
 
-setup_Unbound() {
-    echo "Installiere Unbound in einem separaten Docker-Container..."
-    mkdir -p /opt/stacks/unbound
-    cat <<EOF > /opt/stacks/unbound/docker-compose.yml
-version: "3"
-services:
-  unbound:
-    container_name: unbound
-    image: mvance/unbound:latest
-    restart: unless-stopped
-    ports:
-      - "5335:53/udp"
-    volumes:
-      - './unbound:/opt/unbound/etc/unbound/'
-EOF
-    echo "Unbound Docker-Container wurde konfiguriert."
-}
-
-# Überprüfen, ob Docker installiert ist
+# Überprüfen, ob Docker und Docker-Compose installiert sind
 if ! command -v docker &> /dev/null || ! command -v docker-compose &> /dev/null; then
     echo "Docker oder Docker-Compose sind nicht installiert. Bitte installieren Sie diese zuerst."
     exit 1
 fi
 
-# Benutzerabfrage
-echo "Möchten Sie nur Pi-hole (1) oder Pi-hole mit Unbound (2) installieren?"
-read -p "Geben Sie 1 oder 2 ein: " choice
+# Volumes leeren (optional)
+echo "Leere alte Volumes..."
+sudo rm -rf /opt/stacks/pihole/etc-pihole/*
+sudo rm -rf /opt/stacks/pihole/etc-dnsmasq.d/*
 
-if [ "$choice" == "1" ]; then
-    setup_PiHole
-elif [ "$choice" == "2" ]; then
-    setup_PiHole
-    setup_Unbound
+# Docker-Container für Pi-hole starten
+docker-compose -f /opt/stacks/pihole/docker-compose.yml up -d
+
+# Überprüfen, ob der Container läuft
+if [ "$(docker ps -q -f name=pihole)" ]; then
+    echo "Pi-hole läuft auf http://<Ihre-IP>:8020/admin (Port 8020)."
 else
-    echo "Ungültige Eingabe. Skript wird beendet."
-    exit 1
+    echo "Fehler beim Starten von Pi-hole. Überprüfen Sie die Logs mit 'docker logs pihole'."
 fi
-
-# Docker-Container starten
-if [ "$choice" == "1" ]; then
-    docker-compose -f /opt/stacks/pihole/docker-compose.yml up -d
-elif [ "$choice" == "2" ]; then
-    docker-compose -f /opt/stacks/pihole/docker-compose.yml up -d
-    docker-compose -f /opt/stacks/unbound/docker-compose.yml up -d
-fi
-
-echo "Installation abgeschlossen. Pi-hole (und Unbound falls ausgewählt) läuft jetzt."
-
 }
 
 # Funktion: Festplatte einrichten

@@ -214,6 +214,57 @@ EOF
 
     print_success "MeshCentral läuft auf http://192.168.188.25."
 }
+
+#Pi-Hole
+setup_Pi(){
+echo "Installiere Pi-hole in einem Docker-Container..."
+# Verzeichnis für Pi-hole erstellen
+mkdir -p /opt/stacks/pihole
+# Docker-Compose Datei erstellen
+cat <<EOF > /opt/stacks/pihole/docker-compose.yml
+version: "3"
+services:
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    ports:
+      - "5355:53/tcp"   # Ändert den externen DNS-Port auf 5355
+      - "5355:53/udp"   # Ändert den externen DNS-Port auf 5355
+      - "8020:80/tcp"   # Web-Oberfläche auf Port 8020 verfügbar machen
+    environment:
+      TZ: 'Europe/Berlin'  # Zeitzone anpassen
+      WEBPASSWORD: 'IhrSicheresPasswort'  # Passwort für die Weboberfläche festlegen
+      FTLCONF_LOCAL_IPV4: '192.168.x.x'  # Ersetzen Sie dies durch die IP-Adresse Ihres Hosts
+    volumes:
+      - './etc-pihole:/etc/pihole'
+      - './etc-dnsmasq.d:/etc/dnsmasq.d'
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+EOF
+
+# Überprüfen, ob Docker und Docker-Compose installiert sind
+if ! command -v docker &> /dev/null || ! command -v docker-compose &> /dev/null; then
+    echo "Docker oder Docker-Compose sind nicht installiert. Bitte installieren Sie diese zuerst."
+    exit 1
+fi
+
+# Volumes leeren (optional)
+echo "Leere alte Volumes..."
+sudo rm -rf /opt/stacks/pihole/etc-pihole/*
+sudo rm -rf /opt/stacks/pihole/etc-dnsmasq.d/*
+
+# Docker-Container für Pi-hole starten
+docker-compose -f /opt/stacks/pihole/docker-compose.yml up -d
+
+# Überprüfen, ob der Container läuft
+if [ "$(docker ps -q -f name=pihole)" ]; then
+    echo "Pi-hole läuft auf http://<Ihre-IP>:8020/admin (Port 8020)."
+else
+    echo "Fehler beim Starten von Pi-hole. Überprüfen Sie die Logs mit 'docker logs pihole'."
+fi
+}
+
 # Funktion: Festplatte einrichten
 setup_drive() {
     print_info "Richte die externe Festplatte ein..."
@@ -253,10 +304,11 @@ main_menu() {
     echo " 6) Portainer installieren (Docker)"
     echo " 7) Nextcloud installieren (Docker)"
     echo " 8) MeshCentral installieren (Docker)"
-    echo " 9) Externe Festplatte einbinden"
-    echo " 10) Ruhezustand deaktivieren"
-    echo " 11) Alle Dienste einrichten"
-    echo " 12) Beenden"
+    echo " 9) Pi-hole installieren (Docker)"
+    echo " 10) Externe Festplatte einbinden"
+    echo " 11) Ruhezustand deaktivieren"
+    echo " 12) Alle Dienste einrichten"
+    echo " 13) Beenden"
     echo -e "${BLUE}=========================================${NC}"
    
     echo -e "Bitte geben Sie eine Zahl ein."
@@ -292,6 +344,8 @@ main_menu() {
                 ;;
             12) print_custom_info "Noch in Arbeit."
                 ;;
+	    13) print_custom_info "Noch in Arbeit."
+                ;;
             *)  print_custom_info "Noch in Arbeit."
                 ;;
         esac
@@ -313,11 +367,13 @@ main_menu() {
                 ;;
             8)  setup_meshcentral
                 ;;
-            9)  setup_drive
+	    9)  setup_Pi
                 ;;
-            10) disable_sleep
+            10)  setup_drive
                 ;;
-            11) setup_wireguard
+            11) disable_sleep
+                ;;
+            12) setup_wireguard
                 setup_drive
                 setup_lex
                 setup_unifi
@@ -328,7 +384,7 @@ main_menu() {
                 setup_meshcentral
                 disable_sleep
                 ;;
-            12) print_info "Setup beendet. Viel Spaß mit Ihrem Server!"
+            13) print_info "Setup beendet. Viel Spaß mit Ihrem Server!"
                 exit 0
                 ;;
             *)  print_error "Ungültige Option! Bitte erneut versuchen."

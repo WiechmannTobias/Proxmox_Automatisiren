@@ -1,0 +1,462 @@
+#!/bin/bash
+
+# Farben für die Konsolenausgabe
+GREEN="\e[32m"
+RED="\e[31m"
+YELLOW="\e[33m"
+BLUE="\e[34m"
+NC="\e[0m"
+
+# Funktionen für Statusmeldungen
+print_success() {
+    echo -e "${GREEN}[OK]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[FEHLER]${NC} $1"
+}
+
+print_info() {
+    echo -e "${YELLOW}[INFO]${NC} $1"
+}
+
+print_custom_info() {
+    echo -e "${YELLOW}[INFO]${NC} $1"
+}
+
+# ASCII-Banner anzeigen
+show_banner() {
+    clear
+    echo -e "${BLUE}"
+    echo "========================================="
+    echo "         🛠️ Server Setup Skript         "
+    echo "========================================="
+    echo -e "${NC}"
+}
+
+# Funktion: Verfügbare Festplatten auswählen
+choose_drive() {
+    print_info "Verfügbare Festplatten:"
+    drives=()
+    count=1
+
+    # Hauptfestplatte hinzufügen
+    drives+=("/")
+    echo "$count) / (Hauptfestplatte)"
+    count=$((count+1))
+
+    # Alle Verzeichnisse unter /mnt hinzufügen
+    if [ -d /mnt ]; then
+      for d in /mnt/*; do
+        if [ -d "$d" ]; then
+           drives+=("$d")
+           echo "$count) $d"
+           count=$((count+1))
+        fi
+      done
+    fi
+
+    # Alle Verzeichnisse unter /media hinzufügen
+    if [ -d /media ]; then
+      for d in /media/*; do
+        if [ -d "$d" ]; then
+           drives+=("$d")
+           echo "$count) $d"
+           count=$((count+1))
+        fi
+      done
+    fi
+
+    read -p "Bitte wählen Sie eine Festplatte (Zahl): " choice
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#drives[@]} ]; then
+       selected_drive="${drives[$((choice-1))]}"
+       echo "$selected_drive"
+    else
+       print_error "Ungültige Auswahl."
+       choose_drive
+    fi
+}
+
+# Funktion: WireGuard einrichten (kein persistenter Speicher)
+setup_wireguard() {
+    print_info "Richte WireGuard ein..."
+    apt update && apt install -y wireguard resolvconf ufw
+
+    mkdir -p /etc/wireguard
+    chmod 700 /etc/wireguard
+
+    cat <<EOF > /etc/wireguard/wg0.conf
+[Interface]
+PrivateKey = +Aim+1d7PcR89p2E=
+Address = 10./24
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = JK=
+PresharedKey = 5XH/Q5MZs=
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = 8:51820
+EOF
+
+    chmod 600 /etc/wireguard/wg0.conf
+    wg-quick up wg0
+    systemctl enable wg-quick@wg0
+    print_success "WireGuard wurde erfolgreich konfiguriert."
+}
+
+# Funktion: Plex Media Server einrichten
+setup_plex() {
+    print_info "Installiere Plex Media Server in einem Docker-Container..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/docker/plex/config"
+    mkdir -p "$drive/docker/plex/movies"
+
+    docker run -d \
+        --name=plex \
+        --net=host \
+        -e TZ="Europe/Berlin" \
+        -e PLEX_CLAIM= \
+        -v "$drive/docker/plex/config":/config \
+        -v "$drive/docker/plex/movies":/data/movies \
+        --restart unless-stopped \
+        plexinc/pms-docker
+
+    print_success "Plex Media Server läuft auf http://<Ihre-IP>:32400 (Port 32400)."
+}
+
+# Funktion: UniFi Controller einrichten
+setup_unifi() {
+    print_info "Installiere UniFi Controller in einem Docker-Container..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/docker/unifi"
+
+    docker run -d \
+        --name=unifi \
+        -p 3478:3478/udp \
+        -p 10001:10001/udp \
+        -p 8080:8080 \
+        -p 8443:8443 \
+        -p 1900:1900/udp \
+        -e TZ="Europe/Berlin" \
+        -v "$drive/docker/unifi":/config \
+        --restart unless-stopped \
+        jacobalberty/unifi:latest
+
+    print_success "UniFi Controller läuft auf https://<Ihre-IP>:8443 (Port 8443)."
+}
+
+# Funktion: Home Assistant einrichten
+setup_homeassistant() {
+    print_info "Installiere Home Assistant in einem Docker-Container..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/docker/homeassistant"
+
+    docker run -d \
+        --name=homeassistant \
+        -p 8123:8123 \
+        -e TZ="Europe/Berlin" \
+        -v "$drive/docker/homeassistant":/config \
+        --restart unless-stopped \
+        ghcr.io/home-assistant/home-assistant:stable
+
+    print_success "Home Assistant läuft auf http://<Ihre-IP>:8123 (Port 8123)."
+}
+
+# Funktion: Netdata einrichten
+setup_netdata() {
+    print_info "Installiere Netdata in einem Docker-Container..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/docker/netdata/config" "$drive/docker/netdata/lib" "$drive/docker/netdata/cache"
+
+    docker run -d \
+        --name=netdata \
+        -p 19999:19999 \
+        -v "$drive/docker/netdata/config":/etc/netdata \
+        -v "$drive/docker/netdata/lib":/var/lib/netdata \
+        -v "$drive/docker/netdata/cache":/var/cache/netdata \
+        --restart unless-stopped \
+        netdata/netdata
+
+    print_success "Netdata läuft auf http://<Ihre-IP>:19999 (Port 19999)."
+}
+
+# Funktion: Portainer einrichten
+setup_portainer() {
+    print_info "Installiere Portainer in einem Docker-Container..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/docker/portainer"
+
+    docker run -d \
+        --name=portainer \
+        -p 9000:9000 \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v "$drive/docker/portainer":/data \
+        --restart unless-stopped \
+        portainer/portainer-ce
+
+    print_success "Portainer läuft auf http://<Ihre-IP>:9000 (Port 9000)."
+}
+
+# Funktion: Nextcloud einrichten (Port 8081)
+setup_nextcloud() {
+    print_info "Installiere Nextcloud in einem Docker-Container..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/docker/nextcloud"
+
+    docker run -d \
+        --name=nextcloud \
+        -p 8081:80 \
+        -v "$drive/docker/nextcloud":/var/www/html \
+        --restart unless-stopped \
+        nextcloud
+
+    print_success "Nextcloud läuft auf http://<Ihre-IP>:8081."
+}
+
+# Funktion: MeshCentral einrichten
+setup_meshcentral() {
+    print_info "Installiere MeshCentral in einem Docker-Container..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/docker/meshcentral"
+    cd "$drive/docker/meshcentral" || exit 1
+
+    cat <<EOF > docker-compose.yml
+version: '3.7'
+
+services:
+  meshcentral:
+    image: typhonragewind/meshcentral:latest
+    container_name: meshcentral
+    network_mode: "host"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./meshcentral_data:/opt/meshcentral/meshcentral-data
+      - ./config.json:/opt/meshcentral/meshcentral-data/config.json
+    restart: unless-stopped
+EOF
+
+    cat <<EOF > config.json
+{
+  "settings": {
+    "cert": "192.168.188.25",
+    "port": 443,
+    "redirPort": 80
+  },
+  "domains": {
+    "": {
+      "allowedOrigin": true
+    }
+  }
+}
+EOF
+
+    mkdir -p meshcentral_data
+    docker-compose up -d
+
+    print_success "MeshCentral läuft auf http://192.168.188.25."
+}
+
+# Funktion: Pi-hole einrichten
+setup_Pi() {
+    echo "Installiere Pi-hole in einem Docker-Container..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/stacks/pihole"
+
+    cat <<EOF > "$drive/stacks/pihole/docker-compose.yml"
+version: "3"
+services:
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    ports:
+      - "5355:53/tcp"
+      - "5355:53/udp"
+      - "8020:80/tcp"
+    environment:
+      TZ: 'Europe/Berlin'
+      WEBPASSWORD: 'IhrSicheresPasswort'
+      FTLCONF_LOCAL_IPV4: '192.168.x.x'
+    volumes:
+      - './etc-pihole:/etc/pihole'
+      - './etc-dnsmasq.d:/etc/dnsmasq.d'
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+EOF
+
+    sudo rm -rf "$drive/stacks/pihole/etc-pihole"/*
+    sudo rm -rf "$drive/stacks/pihole/etc-dnsmasq.d"/*
+
+    docker-compose -f "$drive/stacks/pihole/docker-compose.yml" up -d
+
+    if [ "$(docker ps -q -f name=pihole)" ]; then
+        echo "Pi-hole läuft auf http://<Ihre-IP>:8020/admin (Port 8020)."
+    else
+        echo "Fehler beim Starten von Pi-hole. Überprüfen Sie die Logs mit 'docker logs pihole'."
+    fi
+}
+
+# Funktion: Homarr einrichten
+setup_homarr() {
+    print_info "Installiere Homarr in einem Docker-Container..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/docker/homarr"
+
+    docker run -d \
+        --name=homarr \
+        -p 7575:7575 \
+        -e TZ="Europe/Berlin" \
+        -v "$drive/docker/homarr":/app/config \
+        --restart unless-stopped \
+        homarr/homarr:latest
+
+    print_success "Homarr läuft auf http://<Ihre-IP>:7575 (Port 7575)."
+}
+
+# Funktion: Immich einrichten
+setup_immich() {
+    print_info "Installiere Immich in Docker-Containern..."
+    local drive
+    drive=$(choose_drive)
+    mkdir -p "$drive/docker/immich"
+    cd "$drive/docker/immich" || exit 1
+
+    cat <<EOF > docker-compose.yml
+version: '3.7'
+services:
+  immich:
+    image: immich/immich:latest
+    container_name: immich
+    ports:
+      - "3000:3000"
+    environment:
+      - TZ=Europe/Berlin
+      - DATABASE_URL=postgres://immich:immichpassword@immich-db:5432/immichdb
+      - REDIS_URL=redis://immich-redis:6379
+    depends_on:
+      - immich-db
+      - immich-redis
+    restart: unless-stopped
+
+  immich-db:
+    image: postgres:13
+    container_name: immich-db
+    environment:
+      - POSTGRES_USER=immich
+      - POSTGRES_PASSWORD=immichpassword
+      - POSTGRES_DB=immichdb
+    volumes:
+      - immich-db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  immich-redis:
+    image: redis:6
+    container_name: immich-redis
+    restart: unless-stopped
+
+volumes:
+  immich-db-data:
+EOF
+
+    docker-compose up -d
+    print_success "Immich läuft auf http://<Ihre-IP>:3000 (Port 3000)."
+}
+
+# Funktion: Ruhezustand deaktivieren
+disable_sleep() {
+    print_info "Deaktiviere Ruhezustand und Energiesparmodus..."
+    systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+    print_success "Ruhezustand wurde deaktiviert."
+}
+
+# Hauptmenü
+main_menu() {
+    show_banner
+    echo -e "${BLUE}Wählen Sie eine Option aus:${NC}"
+    echo -e "${BLUE}=========================================${NC}"
+    echo " 1) WireGuard einrichten"
+    echo " 2) Plex Media Server installieren (Docker)"
+    echo " 3) UniFi Controller installieren (Docker)"
+    echo " 4) Home Assistant installieren (Docker)"
+    echo " 5) Netdata installieren (Docker)"
+    echo " 6) Portainer installieren (Docker)"
+    echo " 7) Nextcloud installieren (Docker) (Port 8081)"
+    echo " 8) MeshCentral installieren (Docker)"
+    echo " 9) Pi-hole installieren (Docker)"
+    echo "10) Homarr installieren (Docker)"
+    echo "11) Immich installieren (Docker)"
+    echo "12) Alle Dienste einrichten"
+    echo "13) Ruhezustand deaktivieren"
+    echo "14) Beenden"
+    echo -e "${BLUE}=========================================${NC}"
+   
+    echo -e "Bitte geben Sie eine Zahl ein. Mit dem Zusatz 'i' (z. B. 2i) gibt es eine Info zu dem Punkt."
+    read choice
+
+    if [[ "$choice" =~ ^[0-9]+i$ ]]; then
+        service_number="${choice%?}"
+        case $service_number in
+            1)  print_custom_info "Richtet WireGuard ein (kein persistenter Speicher)." ;;
+            2)  print_custom_info "Installiert Plex mit separaten Ordnern für Konfiguration und Movies." ;;
+            3)  print_custom_info "Installiert den UniFi Controller." ;;
+            4)  print_custom_info "Installiert Home Assistant." ;;
+            5)  print_custom_info "Installiert Netdata." ;;
+            6)  print_custom_info "Installiert Portainer zur Verwaltung der Container." ;;
+            7)  print_custom_info "Installiert Nextcloud (Port 8081 statt 8080)." ;;
+            8)  print_custom_info "Installiert MeshCentral." ;;
+            9)  print_custom_info "Installiert Pi-hole." ;;
+            10) print_custom_info "Installiert Homarr." ;;
+            11) print_custom_info "Installiert Immich mit Docker Compose (inkl. DB und Redis)." ;;
+            12) print_custom_info "Richtet alle Dienste ein." ;;
+            13) print_custom_info "Deaktiviert den Ruhezustand." ;;
+            14) print_custom_info "Beendet das Skript." ;;
+            *)  print_custom_info "Noch in Arbeit." ;;
+        esac
+    else
+        case $choice in
+            1)  setup_wireguard ;;
+            2)  setup_plex ;;
+            3)  setup_unifi ;;
+            4)  setup_homeassistant ;;
+            5)  setup_netdata ;;
+            6)  setup_portainer ;;
+            7)  setup_nextcloud ;;
+            8)  setup_meshcentral ;;
+            9)  setup_Pi ;;
+            10) setup_homarr ;;
+            11) setup_immich ;;
+            12)
+                setup_wireguard
+                setup_plex
+                setup_unifi
+                setup_homeassistant
+                setup_netdata
+                setup_portainer
+                setup_nextcloud
+                setup_meshcentral
+                setup_Pi
+                setup_homarr
+                setup_immich
+                ;;
+            13) disable_sleep ;;
+            14) print_info "Setup beendet. Viel Spaß mit Ihrem Server!"; exit 0 ;;
+            *)  print_error "Ungültige Option! Bitte erneut versuchen." ;;
+        esac
+    fi
+
+    read -p "Drücken Sie Enter, um ins Menü zurückzukehren..."
+    main_menu
+}
+
+# Skript starten
+main_menu

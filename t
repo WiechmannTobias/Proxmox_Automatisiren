@@ -1,15 +1,4 @@
 #!/bin/bash
-# Skript zur Einrichtung von Nextcloud auf Ubuntu 20.04,
-# wobei ein bereits vorhandener ZFS-Pool (nas_pool) genutzt wird.
-# Es wird kein neuer ZFS-Pool angelegt!
-
-# Sicherstellen, dass das Skript als root ausgeführt wird
-if [ "$(id -u)" -ne 0 ]; then
-  echo "Bitte als root oder mit sudo ausführen!"
-  exit 1
-fi
-
-set -e
 
 echo "System aktualisieren..."
 apt update && apt upgrade -y

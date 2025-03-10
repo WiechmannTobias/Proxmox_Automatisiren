@@ -1,89 +1,54 @@
 #!/bin/bash
 
-echo "System aktualisieren..."
+# Stoppe das Skript bei Fehlern
+set -e
+
+echo "==== System-Updates ===="
 apt update && apt upgrade -y
 
-echo "Notwendige Pakete installieren..."
-apt install -y apache2 mariadb-server php libapache2-mod-php \
-    php-mysql php-gd php-json php-curl php-mbstring php-intl php-xml php-zip unzip ufw
+echo "==== ZFS-Installation ===="
+apt install -y zfsutils-linux
+modprobe zfs
 
-# MariaDB-Setup: Datenbank und Benutzer für Nextcloud
-# Zugangsdaten: admin / 123123
-NEXTCLOUD_DB="nextcloud"
-NEXTCLOUD_DB_USER="admin"
-NEXTCLOUD_DB_PASS="123123"
-
-echo "Datenbank für Nextcloud einrichten..."
-mysql -e "CREATE DATABASE IF NOT EXISTS ${NEXTCLOUD_DB};"
-mysql -e "DROP USER IF EXISTS '${NEXTCLOUD_DB_USER}'@'localhost';"
-mysql -e "CREATE USER '${NEXTCLOUD_DB_USER}'@'localhost' IDENTIFIED BY '${NEXTCLOUD_DB_PASS}';"
-mysql -e "GRANT ALL PRIVILEGES ON ${NEXTCLOUD_DB}.* TO '${NEXTCLOUD_DB_USER}'@'localhost';"
-mysql -e "FLUSH PRIVILEGES;"
-
-# Nutzung des vorhandenen ZFS-Pools (z. B. "Nas")
-POOL_NAME="nas_pool"
-MOUNTPOINT=$(zfs get -H -o value mountpoint $POOL_NAME || true)
-
-if [ -z "$MOUNTPOINT" ]; then
-  echo "Fehler: ZFS-Pool ${POOL_NAME} wurde nicht gefunden oder besitzt keinen Mountpoint!"
-  exit 1
+echo "==== Alle Partitionen auf /dev/sda löschen ===="
+if [ ! -b /dev/sda ]; then
+    echo "Fehler: /dev/sda nicht gefunden!"
+    exit 1
 fi
 
-echo "Verwende vorhandenen ZFS-Pool '${POOL_NAME}' mit Mountpoint '${MOUNTPOINT}'"
+if zpool list | grep -q nas_pool; then
+    echo "Vorhandenen ZFS-Pool 'nas_pool' zerstören..."
+    zpool destroy nas_pool
+fi
 
-# Nextcloud-Datenverzeichnis im ZFS-Pool erstellen
-NEXTCLOUD_DATA_DIR="${MOUNTPOINT}/nextcloud_data"
-mkdir -p "$NEXTCLOUD_DATA_DIR"
-chown -R www-data:www-data "$NEXTCLOUD_DATA_DIR"
+swapoff -a
+umount -f /dev/sda* || true
+wipefs -a /dev/sda
+sgdisk --zap-all /dev/sda
+partprobe /dev/sda
 
-# Nextcloud herunterladen und entpacken (Version anpassen falls nötig)
-NEXTCLOUD_VERSION="25.0.0"
-echo "Lade Nextcloud Version ${NEXTCLOUD_VERSION} herunter..."
-wget -O /tmp/nextcloud.zip "https://download.nextcloud.com/server/releases/nextcloud-${NEXTCLOUD_VERSION}.zip"
-echo "Entpacke Nextcloud..."
-unzip -q /tmp/nextcloud.zip -d /var/www/
-chown -R www-data:www-data /var/www/nextcloud
+echo "==== ZFS-Pool 'nas_pool' erstellen auf /dev/sda ===="
+zpool create -f -o ashift=12 nas_pool /dev/sda
+zfs set compression=lz4 nas_pool
+zfs set atime=off nas_pool
+zfs set mountpoint=/nas nas_pool
 
-# Apache-Konfiguration für Nextcloud erstellen – Port 8081
-echo "Erstelle Apache-Konfiguration für Nextcloud (Port 8081)..."
-cat > /etc/apache2/sites-available/nextcloud.conf <<EOF
-<VirtualHost *:8081>
-    ServerAdmin admin@deinedomain.de
-    DocumentRoot /var/www/nextcloud
-    ServerName nextcloud.deinedomain.de
+echo "==== OpenMediaVault installieren ===="
+wget -O - https://github.com/OpenMediaVault-Plugin-Developers/installScript/raw/master/install | sudo bash
 
-    <Directory /var/www/nextcloud/>
-        Options +FollowSymlinks
-        AllowOverride All
-        Require all granted
-    </Directory>
+echo "==== OMV Port auf 8081 ändern ===="
+omv-env set OMV_WEBGUI_PORT 8081
+omv-salt stage run prepare
+omv-salt deploy run nginx
+omv-salt deploy run php-fpm
+omv-salt deploy run systemd
 
-    ErrorLog \${APACHE_LOG_DIR}/nextcloud_error.log
-    CustomLog \${APACHE_LOG_DIR}/nextcloud_access.log combined
-</VirtualHost>
-EOF
+echo "==== Samba & NFS installieren ===="
+apt install -y samba nfs-kernel-server
 
-# Apache so konfigurieren, dass er auf Port 8081 lauscht
-sed -i 's/^Listen 80/Listen 8081/' /etc/apache2/ports.conf
+echo "==== Benutzer & Rechte setzen ===="
+useradd -m -s /bin/bash nasuser
+passwd nasuser
 
-a2ensite nextcloud.conf
-a2enmod rewrite headers env dir mime
-systemctl reload apache2
-
-# UFW: Port 8081 freischalten
-echo "Öffne Port 8081/tcp in der Firewall..."
-ufw allow 8081/tcp
-ufw reload
-
-# Nextcloud-Installation per occ-Befehl (Admin: admin / 123123, Datenverzeichnis: $NEXTCLOUD_DATA_DIR)
-echo "Starte die Nextcloud-Installation (CLI)..."
-sudo -u www-data php /var/www/nextcloud/occ maintenance:install \
-    --database "mysql" \
-    --database-name "${NEXTCLOUD_DB}" \
-    --database-user "${NEXTCLOUD_DB_USER}" \
-    --database-pass "${NEXTCLOUD_DB_PASS}" \
-    --admin-user "${NEXTCLOUD_DB_USER}" \
-    --admin-pass "${NEXTCLOUD_DB_PASS}" \
-    --data-dir "$NEXTCLOUD_DATA_DIR"
-
-echo "Fertig! Nextcloud ist nun erreichbar unter http://<IP oder Domain>:8081"
+echo "==== Installation abgeschlossen! ===="
+echo "OpenMediaVault ist jetzt erreichbar unter: http://$(hostname -I | awk '{print $1'}):8081"

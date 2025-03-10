@@ -27,7 +27,7 @@ wipefs -a /dev/sda
 sgdisk --zap-all /dev/sda
 partprobe /dev/sda
 
-echo "==== ZFS-Pool 'nas_pool' erstellen auf /dev/sda ===="
+echo "==== ZFS-Pool 'nas_pool' auf /dev/sda erstellen ===="
 zpool create -f -o ashift=12 nas_pool /dev/sda
 zfs set compression=lz4 nas_pool
 zfs set atime=off nas_pool

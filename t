@@ -6,9 +6,28 @@ set -e
 echo "==== System-Updates ===="
 apt update && apt upgrade -y
 
-echo "==== ZFS-Installation ===="
-apt install -y zfsutils-linux
-modprobe zfs
+echo "==== Überprüfe ZFS und installiere es, falls notwendig ===="
+# Stelle sicher, dass ZFS-Pakete installiert sind
+if ! command -v zfs &> /dev/null; then
+    echo "ZFS ist nicht installiert. Installiere ZFS..."
+    
+    # Benötigte Repositories hinzufügen
+    sudo apt install -y software-properties-common
+    sudo add-apt-repository ppa:zfs-native/stable
+    sudo apt update
+    
+    # ZFS installieren
+    sudo apt install -y zfsutils-linux
+    sudo modprobe zfs
+fi
+
+# Bestätige, dass ZFS erfolgreich installiert wurde
+if ! command -v zfs &> /dev/null; then
+    echo "Fehler: ZFS konnte nicht installiert werden!"
+    exit 1
+fi
+
+echo "ZFS wurde erfolgreich installiert und geladen."
 
 echo "==== Alle Partitionen auf /dev/sda löschen ===="
 if [ ! -b /dev/sda ]; then
@@ -16,11 +35,13 @@ if [ ! -b /dev/sda ]; then
     exit 1
 fi
 
+# Wenn ein ZFS-Pool existiert, diesen zerstören
 if zpool list | grep -q nas_pool; then
     echo "Vorhandenen ZFS-Pool 'nas_pool' zerstören..."
     zpool destroy nas_pool
 fi
 
+# Schalte Swap aus und mounte alle Partitionen ab
 swapoff -a
 umount -f /dev/sda* || true
 wipefs -a /dev/sda

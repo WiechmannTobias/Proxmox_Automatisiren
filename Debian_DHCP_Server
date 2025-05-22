@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Eingabeparameter prüfen
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <NETZWERK> <RANGE_START> <RANGE_END>"
+    echo "Beispiel: $0 10.8.0.0/24 10.8.0.10 10.8.0.100"
+    exit 1
+fi
+
+NETZWERK="$1"
+RANGE_START="$2"
+RANGE_END="$3"
+NETZ="${NETZWERK%%/*}"
+GATEWAY="$(echo $NETZ | sed 's/\.[0-9]*$/.1/')"
+SUBNET_MASK="255.255.255.0"
+
+# DHCP-Server installieren
+echo "🔧 DHCP-Server installieren..."
+apt update
+apt install isc-dhcp-server iptables-persistent -y
+
+# Interface-Konfiguration
+echo "Konfiguriere isc-dhcp-server Default-Datei..."
+echo 'INTERFACESv4="eth01"' > /etc/default/isc-dhcp-server
+
+# DHCP-Konfiguration schreiben
+echo "Schreibe /etc/dhcp/dhcpd.conf..."
+cat > /etc/dhcp/dhcpd.conf <<EOF
+default-lease-time 600;
+max-lease-time 7200;
+authoritative;
+
+subnet $NETZ netmask $SUBNET_MASK {
+    range $RANGE_START $RANGE_END;
+    option routers $GATEWAY;
+    option domain-name-servers 1.1.1.1, 8.8.8.8;
+}
+EOF
+
+# DHCP-Server neu starten
+echo "Starte DHCP-Server neu..."
+systemctl restart isc-dhcp-server
+systemctl enable isc-dhcp-server
+
+# IP-Forwarding aktivieren
+echo "Aktiviere IP-Forwarding..."
+echo 1 > /proc/sys/net/ipv4/ip_forward
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+sysctl -p
+
+# NAT-Regel setzen
+echo "Setze NAT-Regel..."
+iptables -t nat -A POSTROUTING -s $NETZWERK -o vmbr0 -j MASQUERADE
+netfilter-persistent save
+
+echo "Setup abgeschlossen. DHCP vergibt IPs von $RANGE_START bis $RANGE_END im Netzwerk $NETZWERK"

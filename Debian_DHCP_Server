@@ -25,3 +25,6 @@ systemctl restart isc-dhcp-server
 systemctl enable isc-dhcp-server
 
 echo "DHCP-Server fertig eingerichtet. Vergibt IPs von 10.8.0.10 bis 10.8.0.100"
+
+
+Optionmal dhcpd -f -d -cf /etc/dhcp/dhcpd.conf eth01

@@ -1,0 +1,39 @@
+✅ 1. Proxmox: Bridge-Netzwerk vmbr1 erstellen
+In der Proxmox Web-GUI:
+
+Gehe zu Datacenter → dein Node → Netzwerk → Create → Linux Bridge
+
+Name: vmbr1
+
+IPv4-Adresse: 10.8.0.1/24
+
+Gateway: leer lassen (Gateway ist bei vmbr0)
+
+Übernehmen und speichern
+
+Netzwerk neu starten oder Node neu booten, falls nötig
+
+✅ 2. LXC-Container für DHCP-Server erstellen
+In der Proxmox GUI:
+
+Create CT
+
+Hostname: z. B. dhcp-server
+
+Root-Passwort und Template (z. B. debian-12) auswählen
+
+Disk Size: 4GB oder mehr
+
+CPU & RAM: z. B. 1 Core, 512MB RAM
+
+Netzwerk:
+
+Bridge: vmbr1
+
+IPv4: leer lassen (DHCP-Server braucht selbst keine IP)
+
+Gateway: leer lassen
+
+Container erstellen
+
+📌 Hinweis: Die Netzwerkschnittstelle im Container wird intern eth0, im DHCP-Server aber eth01 genannt (wegen udev).

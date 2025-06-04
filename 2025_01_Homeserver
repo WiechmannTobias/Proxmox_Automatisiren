@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# Festplatten-Konfiguration
-DRIVE_UUID="202CF5B12CF581D8"
-MOUNT_POINT="/mnt/plexdrive"
-
 # Farben für die Konsolenausgabe
 GREEN="\e[32m"
 RED="\e[31m"

@@ -97,6 +97,8 @@ install_docker() {
 
     print_info "Führe Testcontainer aus..."
     docker run --rm hello-world && print_success "Docker funktioniert korrekt." || print_error "Testcontainer konnte nicht ausgeführt werden!"
+    print_info "Das könnte benötig werden lxc.apparmor.profile: unconfined , lxc.cgroup.devices.allow: a , lxc.cap.drop:  /etc/pvc/lxc/<id>.conf"
+
 }
 
 # Funktion: WireGuard einrichten
